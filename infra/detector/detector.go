@@ -88,44 +88,62 @@ func DetectRedhat(c *backend.Cmd) command.CommandFactory {
 }
 
 func DetectDebian(c *backend.Cmd) command.CommandFactory {
-	if c.RunCommand("ls /etc/os-release").Success() {
-		var family string
+	if c.RunCommand("ls /etc/debian_version").Success() {
+		var distro string
 		var release string
-		stdout := c.RunCommand("cat /etc/os-release").Stdout
-		scanner := bufio.NewScanner(&stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			terms := strings.SplitN(line, "=", 2)
-			if len(terms) == 2 {
-				switch terms[0] {
-				case "ID":
-					family = terms[1]
-				case "VERSION_ID":
-					release = strings.Trim(terms[1], `"`)
+		cmdRes := c.RunCommand("lsb_release -ir")
+		if cmdRes.Success() {
+			scanner := bufio.NewScanner(&cmdRes.Stdout)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.HasPrefix(line, "Distributor ID:") {
+					words := strings.Split(line, ":")
+					distro = strings.TrimSpace(words[len(words)-1])
+				} else if strings.HasPrefix(line, "Release:") {
+					words := strings.Split(line, ":")
+					release = strings.TrimSpace(words[len(words)-1])
+				}
+			}
+		} else {
+			cmdRes = c.RunCommand("cat /etc/lsb-release")
+			if cmdRes.Success() {
+				scanner := bufio.NewScanner(&cmdRes.Stdout)
+				for scanner.Scan() {
+					line := scanner.Text()
+					if strings.HasPrefix(line, "DISTRIB_ID=") {
+						words := strings.Split(line, ":")
+						distro = strings.TrimSpace(words[len(words)-1])
+					} else if strings.HasPrefix(line, "DISTRIB_RELEASE=") {
+						words := strings.Split(line, ":")
+						release = strings.TrimSpace(words[len(words)-1])
+					}
 				}
 			}
 		}
-		if family != "" && release != "" {
-			var ret command.CommandFactory
-			if family == "debian" {
-				intRelease, _ := strconv.ParseInt(release, 10, 64)
-				if intRelease >= 8 {
-					ret = &command.DebianV8Command{}
-				} else {
-					ret = &command.DebianV6Command{}
-				}
-			} else if family == "ubuntu" {
-				if release >= "16.04" {
-					ret = &command.UbuntuV1604Command{}
-				} else {
-					ret = &command.UbuntuV1204Command{}
-				}
+		if distro == "" {
+			distro = "debian"
+		}
+		family := strings.ToLower(regexp.MustCompile(`[^[:alnum:]]`).ReplaceAllString(distro, ""))
+
+		var ret command.CommandFactory
+		if family == "debian" {
+			intRelease, _ := strconv.ParseInt(release, 10, 64)
+			if intRelease >= 8 {
+				ret = &command.DebianV8Command{}
+			} else {
+				ret = &command.DebianV6Command{}
 			}
-			if ret != nil {
-				ret.SetOSFamily(family)
-				ret.SetOSRelease(release)
-				return ret
+		} else if family == "ubuntu" {
+			if release >= "16.04" {
+				ret = &command.UbuntuV1604Command{}
+			} else {
+				ret = &command.UbuntuV1204Command{}
 			}
+		}
+		if ret != nil {
+			ret.SetOSFamily(family)
+			ret.SetOSRelease(release)
+			return ret
 		}
 	}
 	return nil

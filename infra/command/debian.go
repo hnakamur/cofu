@@ -11,16 +11,18 @@ func (c *DebianCommand) String() string {
 }
 
 func (c *DebianCommand) CheckPackageIsInstalled(packagename string, version string) string {
-	cmd := "test `dpkg-query -W -f='${Version}' " + util.ShellEscape(packagename) + "`"
+	var cmd string
 	if version != "" {
-		cmd = "test x`dpkg-query -W -f='${Version}' " + util.ShellEscape(packagename) + "` = x" + util.ShellEscape(version)
+		cmd = "dpkg-query -f '${Status} ${Version}' -W " + util.ShellEscape(packagename) + " | grep -E '^(install|hold) ok installed " + util.ShellEscape(version) + "$'"
+	} else {
+		cmd = "dpkg-query -f '${Status}' -W " + util.ShellEscape(packagename) + " | grep -E '^(install|hold) ok installed$'"
 	}
 
 	return cmd
 }
 
 func (c *DebianCommand) GetPackageVersion(packagename string, option string) string {
-	return "dpkg-query -W -f='${Version}' " + util.ShellEscape(packagename)
+	return "dpkg-query -f '${Status} ${Version}' -W " + packagename + " | sed -n 's/^install ok installed //p'"
 }
 
 func (c *DebianCommand) InstallPackage(packagename string, version string, option string) string {
@@ -30,10 +32,9 @@ func (c *DebianCommand) InstallPackage(packagename string, version string, optio
 	} else {
 		fullPackage = packagename
 	}
-
-	return "apt-get -y " + option + " install " + util.ShellEscape(fullPackage)
+	return "DEBIAN_FRONTEND='noninteractive' apt-get -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' " + option + " install " + fullPackage
 }
 
 func (c *DebianCommand) RemovePackage(packagename string, option string) string {
-	return "apt-get -y " + option + " autoremove " + util.ShellEscape(packagename)
+	return "DEBIAN_FRONTEND='noninteractive' apt-get -y " + option + " remove " + packagename
 }
